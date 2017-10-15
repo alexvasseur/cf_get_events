@@ -1,11 +1,11 @@
 #!/bin/bash
 
-GOOS=darwin go build -o get-events-plugin-osx
-#GOOS=linux go build -o get-events-plugin-linux
-#GOOS=windows GOARCH=amd64 go build -o get-events-plugin.exe
+GOOS=darwin go build -o bcr-plugin-osx
+#GOOS=linux go build -o bcr-plugin-linux
+#GOOS=windows GOARCH=amd64 go build -o bcr-plugin.exe
 if [ $? != 0 ]; then
    printf "Error when executing compile\n"
    exit 1
 fi
-cf uninstall-plugin get-events
-cf install-plugin -f ./get-events-plugin-osx
+cf uninstall-plugin bcr
+cf install-plugin -f ./bcr-plugin-osx

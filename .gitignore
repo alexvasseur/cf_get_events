@@ -47,10 +47,10 @@ local.properties
 ######################
 # binaries
 ######################
-get-events-plugin-osx
-get-events-plugin-darwin
-get-events-plugin-linux
-get-events-plugin.exe
+bcr-plugin-osx
+bcr-plugin-darwin
+bcr-plugin-linux
+bcr-plugin.exe
 
 ######################
 # Windows

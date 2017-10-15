@@ -47,15 +47,15 @@ type Inputs struct {
 // GetMetadata provides the Cloud Foundry CLI with metadata to provide user about how to use `get-events` command
 func (c *Events) GetMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
-		Name: "get-events",
+		Name: "bcr",
 		Version: plugin.VersionType{
 			Major: 0,
-			Minor: 6,
+			Minor: 1,
 			Build: 0,
 		},
 		Commands: []plugin.Command{
 			{
-				Name:     "get-events",
+				Name:     "bcr-get-events",
 				HelpText: "Get microservice events (by akoranne@ecsteam.com)",
 				UsageDetails: plugin.Usage {
 					Usage: UsageText(),
@@ -74,7 +74,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	var ins Inputs
 
 	switch args[0] {
-	case "get-events":
+	case "bcr-get-events":
 		ins = c.buildClientOptions(args)
 	case "example-alternate-command":
 	default:
