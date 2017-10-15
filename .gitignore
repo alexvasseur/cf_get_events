@@ -47,6 +47,7 @@ local.properties
 ######################
 # binaries
 ######################
+cf_get_events
 bcr-plugin-osx
 bcr-plugin-darwin
 bcr-plugin-linux

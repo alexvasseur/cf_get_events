@@ -31,7 +31,7 @@ type AppSearchEntity struct {
 	DetectedBuildpack string `json:"detected_buildpack"`
 	SpaceGUID         string `json:"space_guid"`
 	Instances         int    `json:"instances"`
-	State             string `json:"state"`
+	State             string `json:"state"` // STARTED, STOPPED, ??TODO
 	Memory            int    `json:"memory"`
 	DiskQuota         int    `json:"disk_quota"`
 }

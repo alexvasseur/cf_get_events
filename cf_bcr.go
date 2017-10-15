@@ -16,17 +16,17 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
-	"github.com/cloudfoundry/cli/plugin"
-	"time"
 	"os"
 	"regexp"
 	"strings"
-	"github.com/simonleung8/flags"
-	"bytes"
-	"encoding/json"
-)
+	"time"
 
+	"github.com/cloudfoundry/cli/plugin"
+	"github.com/simonleung8/flags"
+)
 
 // Events represents Buildpack Usage CLI interface
 type Events struct{}
@@ -44,6 +44,19 @@ type Inputs struct {
 	isJson   bool
 }
 
+type Counts struct {
+	org           int
+	space         int
+	app           int
+	appStarted    int
+	AI            int
+	AIStarted     int
+	AIUser        int
+	AIUserStarted int
+	mem           int
+	memStarted    int
+}
+
 // GetMetadata provides the Cloud Foundry CLI with metadata to provide user about how to use `get-events` command
 func (c *Events) GetMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
@@ -57,7 +70,7 @@ func (c *Events) GetMetadata() plugin.PluginMetadata {
 			{
 				Name:     "bcr-get-events",
 				HelpText: "Get microservice events (by akoranne@ecsteam.com)",
-				UsageDetails: plugin.Usage {
+				UsageDetails: plugin.Usage{
 					Usage: UsageText(),
 				},
 			},
@@ -84,22 +97,65 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	orgs := c.GetOrgs(cli)
 	spaces := c.GetSpaces(cli)
 	apps := c.GetAppData(cli)
-	events := c.GetEventsData(cli, ins)
-	results := c.FilterResults(cli, ins, orgs, spaces, apps, events)
-	if (ins.isCsv) {
-		c.EventsInCSVFormat(results)
-	} else {
-		c.EventsInJsonFormat(results)
-	}
-}
 
+	var total Counts
+	total.org = len(orgs)
+	total.space = len(spaces)
+	total.app = len(apps.Resources)
+
+	// order by Orgs, then by Space
+	for oguid, _ := range orgs {
+		for sguid, space := range spaces {
+			if space.OrgGUID == oguid {
+				for _, val := range apps.Resources {
+					if val.Entity.SpaceGUID == sguid {
+
+						total.AI += val.Entity.Instances
+						total.mem += val.Entity.Instances * val.Entity.Memory
+						if val.Entity.State == "STARTED" {
+							total.AIStarted += val.Entity.Instances
+							total.memStarted += val.Entity.Instances * val.Entity.Memory
+							total.appStarted++
+						}
+
+						if orgs[oguid] != "system" { //&& orgs[oguid] != "p-spring-cloud-services" {
+							total.AIUser += val.Entity.Instances
+							if val.Entity.State == "STARTED" {
+								total.AIUserStarted += val.Entity.Instances
+							}
+						}
+
+						fmt.Printf("%s,%s,%s,%d,%d,%s\n",
+							orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+							val.Entity.Instances, val.Entity.Memory, val.Entity.State)
+					}
+				}
+			}
+		}
+	}
+
+	fmt.Printf("*** Summary \n")
+	fmt.Printf("org, space, app, app started, AI, AI started, AI user, AI user started, MB, MB started\n")
+	fmt.Printf("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", total.org, total.space, total.app, total.appStarted, total.AI, total.AIStarted, total.AIUser, total.AIUserStarted, total.mem, total.memStarted)
+
+	events := c.GetEventsData(cli, ins)
+	c.FilterResults(cli, ins, orgs, spaces, apps, events)
+	//results := c.FilterResults(cli, ins, orgs, spaces, apps, events)
+	/*
+		if ins.isCsv {
+			c.EventsInCSVFormat(results)
+		} else {
+			c.EventsInJsonFormat(results)
+		}
+	*/
+}
 
 func Usage(code int) {
 	fmt.Println("\nUsage: ", UsageText())
 	os.Exit(code)
 }
 
-func UsageText() (string) {
+func UsageText() string {
 	usage := "cf get-events [options]" +
 		"\n    where options include: " +
 		"\n       --today                  : get all events for today (till now)" +
@@ -116,28 +172,28 @@ func UsageText() (string) {
 	return usage
 }
 
-func GetStartOfDay(today time.Time) (time.Time) {
+func GetStartOfDay(today time.Time) time.Time {
 	var now = fmt.Sprintf("%s", today.Format("2006-01-02"))
 	t, _ := time.Parse(time.RFC3339, now+"T00:00:00Z")
 	return t
 }
 
-func GetEndOfDay(today time.Time) (time.Time) {
+func GetEndOfDay(today time.Time) time.Time {
 	var now = fmt.Sprintf("%s", today.Format("2006-01-02"))
 	t, _ := time.Parse(time.RFC3339, now+"T23:59:59Z")
 	return t
 }
 
 // sanitize data by replacing \r, and \n with ';'
-func sanitize(data string) (string) {
+func sanitize(data string) string {
 	var re = regexp.MustCompile(`\r?\n`)
 	var str = re.ReplaceAllString(data, ";")
 	str = strings.Replace(str, ";;", ";", 1)
-	return str;
+	return str
 }
 
 // read arguments passed for the plugin
-func (c *Events) buildClientOptions(args[] string) (Inputs) {
+func (c *Events) buildClientOptions(args []string) Inputs {
 	fc := flags.New()
 	fc.NewBoolFlag("all", "all", " get all events (defaults to last 90 days)")
 	fc.NewBoolFlag("today", "today", "get all events for today (till now)")
@@ -161,31 +217,31 @@ func (c *Events) buildClientOptions(args[] string) (Inputs) {
 	ins.fromDate = GetStartOfDay(today)
 	ins.toDate = time.Now()
 
-	if (fc.IsSet("all")) {
+	if fc.IsSet("all") {
 		nintyDays := time.Hour * -(24 * 90)
-		ins.fromDate  = today.Add(nintyDays) // today - 90  days
+		ins.fromDate = today.Add(nintyDays) // today - 90  days
 	}
-	if (fc.IsSet("today")) {
-		ins.fromDate  = GetStartOfDay(today)
+	if fc.IsSet("today") {
+		ins.fromDate = GetStartOfDay(today)
 	}
-	if (fc.IsSet("yesterday")) {
+	if fc.IsSet("yesterday") {
 		oneDay := time.Hour * -24
-		ins.fromDate  = GetStartOfDay(today.Add(oneDay)) // today - 1 day
-		ins.toDate = GetEndOfDay(ins.fromDate )
+		ins.fromDate = GetStartOfDay(today.Add(oneDay)) // today - 1 day
+		ins.toDate = GetEndOfDay(ins.fromDate)
 	}
-	if (fc.IsSet("yesterday-on")) {
+	if fc.IsSet("yesterday-on") {
 		oneDay := time.Hour * -24
-		ins.fromDate  = GetStartOfDay(today.Add(oneDay)) // today - 1 day
+		ins.fromDate = GetStartOfDay(today.Add(oneDay)) // today - 1 day
 	}
-	if (fc.IsSet("from")) {
+	if fc.IsSet("from") {
 		var value = fc.String("from")
 		var layout string
 
 		switch len(value) {
 		case 8:
-			layout = "20060102"        // yyyymmdd
+			layout = "20060102" // yyyymmdd
 		case 14:
-			layout = "20060102150405"        // yyyymmddhhmmss
+			layout = "20060102150405" // yyyymmddhhmmss
 		default:
 			fmt.Println("Error: Failed to parse `from` date - ", value)
 			fmt.Println(err)
@@ -198,12 +254,12 @@ func (c *Events) buildClientOptions(args[] string) (Inputs) {
 			fmt.Println(err)
 			Usage(1)
 		} else {
-			ins.fromDate  = t
+			ins.fromDate = t
 		}
 	}
-	if (fc.IsSet("to")) {
+	if fc.IsSet("to") {
 		var value = fc.String("to")
-		const layout = "20060102150405"        // yyyymmdd
+		const layout = "20060102150405" // yyyymmdd
 
 		switch len(value) {
 		case 8:
@@ -226,7 +282,7 @@ func (c *Events) buildClientOptions(args[] string) (Inputs) {
 		}
 	}
 
-	if (fc.IsSet("json")) {
+	if fc.IsSet("json") {
 		ins.isJson = true
 		ins.isCsv = false
 	}
@@ -244,7 +300,7 @@ func (c Events) EventsInCSVFormat(results OutputResults) {
 	//  "2016-12-09T21:44:46Z", "demo", "sandbox", "app", "test-nodejs", "admin", "app.update", "stopped", ""
 
 	fmt.Printf("%s,%s,%s,%s,%s,%s,%s,%s\n", "DATE", "ORG", "SPACE", "ACTEE-TYPE", "ACTEE-NAME", "ACTOR", "EVENT TYPE", "DETAILS")
-	for _, val := range results.Resources  {
+	for _, val := range results.Resources {
 		var mdata = sanitize(fmt.Sprintf("%+v", val.Entity.Metadata))
 		fmt.Printf("%s,%s,%s,%s,%s,%s,%s,%s\n",
 			val.Entity.Timestamp, val.Entity.Org, val.Entity.Space,
@@ -264,4 +320,3 @@ func (c Events) EventsInJsonFormat(results OutputResults) {
 		fmt.Println(out.String())
 	}
 }
-
