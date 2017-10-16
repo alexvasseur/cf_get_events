@@ -1,3 +1,14 @@
+# IMPORTANT
+
+This project is a fork
+This is being refactored to fit a different goal for indicators around Pivotal Cloud Foundry deployment
+
+* BELOW is the old doc of the upstream - you can ignore it *
+
+
+
+
+
 # Cloud Foundry Get Events CLI Plugin
 
 Cloud Foundry plugin to view events for applications or long running processes - LRPs.
