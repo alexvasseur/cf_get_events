@@ -5,6 +5,59 @@ This is being refactored to fit a different goal for indicators around Pivotal C
 
 Using go1.9.1
 
+```
+~/s/g/s/g/E/cf_get_events (master|✚4…) $ cf bcr-apps --today
++-------------------------+-------------------------+----------------------------------------------+-----+--------+--------------+
+|           ORG           |          SPACE          |                     APP                      | AI  | MEMORY |    STATE     |
++-------------------------+-------------------------+----------------------------------------------+-----+--------+--------------+
+| Pivotal                 | bluegreen               | attendees-concourse-v2                       |   1 |    700 | STARTED      |
+| Pivotal                 | bluegreen               | attendees-concourse                          |   3 |    700 | STARTED      |
+| Pivotal                 | springcloud             | fortune-service                              |   1 |    512 | STARTED      |
+| Pivotal                 | springcloud             | fortune-ui                                   |   1 |    512 | STARTED      |
+| Pivotal                 | mongodb                 | spring-music                                 |   1 |   1024 | STARTED      |
+| Pivotal                 | docker                  | dockerapp                                    |   1 |     64 | STOPPED      |
+| Pivotal                 | zipkin-metrics          | shopping-cart-svc                            |   1 |    768 | STOPPED      |
+...
+| system                  | system                  | p-invitations                                |   2 |    256 | STARTED      |
+| system                  | system                  | app-usage-worker                             |   1 |   1024 | STARTED      |
+| system                  | system                  | app-usage-scheduler                          |   1 |    128 | STARTED      |
+| system                  | system                  | app-usage-server                             |   1 |    128 | STARTED      |
+| system                  | system                  | apps-manager-js                              |   6 |    128 | STARTED      |
+| system                  | system                  | apps-manager-js-venerable                    |   6 |    128 | STOPPED      |
+| system                  | system                  | p-invitations-venerable                      |   2 |    256 | STOPPED      |
+| system                  | system                  | app-usage-server-venerable                   |   1 |    128 | STOPPED      |
+| system                  | system                  | app-usage-worker-venerable                   |   1 |   1024 | STOPPED      |
+| system                  | system                  | app-usage-scheduler-venerable                |   1 |    128 | STOPPED      |
+| p-spring-cloud-services | instances               | config-ad35392f-5e0f-410a-a6d9-63f63dc8f601  |   1 |   1024 | STARTED      |
+| p-spring-cloud-services | instances               | eureka-87b64aef-fd93-4ae6-8dbe-ffe55eb38860  |   1 |   1024 | STARTED      |
++-------------------------+-------------------------+----------------------------------------------+-----+--------+--------------+
+|            9            |           28            |                      77                      | 119 | 74206  | 52 (STARTED) |
++-------------------------+-------------------------+----------------------------------------------+-----+--------+--------------+
++-----------------------+-----+-----+--------+
+|       CATEGORY        | APP | AI  | MEMORY |
++-----------------------+-----+-----+--------+
+| Total                 |  77 | 119 |  74206 |
+| Total (excl system)   |  47 |  56 |  48158 |
+| STARTED               |  52 |  74 |  47966 |
+| STARTED (excl system) |  34 |  38 |  32734 |
++-----------------------+-----+-----+--------+
++-------------------------+--------------+--------+----------------+
+|           ORG           | MEMORY LIMIT | MEMORY | MEMORY USAGE % |
++-------------------------+--------------+--------+----------------+
+| development             |        10240 |    750 |              7 |
+| production              |        10240 |   3072 |             30 |
+| microservices           |        10240 |   3584 |             35 |
+| Pivotal                 |       102400 |   7920 |              7 |
+| ProjetA                 |        10240 |      0 |              0 |
+| ProjetB                 |        10240 |      0 |              0 |
+| p-spring-cloud-services |       153600 |  15360 |             10 |
+| qa                      |        10240 |   2048 |             20 |
+| system                  |       102400 |  15232 |             14 |
++-------------------------+--------------+--------+----------------+
+```
+
+
+
 * BELOW is the old doc of the upstream - you can ignore it *
 
 
