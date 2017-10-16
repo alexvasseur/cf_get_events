@@ -21,10 +21,12 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cloudfoundry/cli/plugin"
+	"github.com/olekukonko/tablewriter"
 	"github.com/simonleung8/flags"
 )
 
@@ -103,40 +105,74 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	total.space = len(spaces)
 	total.app = len(apps.Resources)
 
-	// order by Orgs, then by Space
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Org", "Space", "App", "AI", "Memory", "State"})
+
+	// order by Orgs, then by Space, then by State
 	for oguid, _ := range orgs {
 		for sguid, space := range spaces {
 			if space.OrgGUID == oguid {
-				for _, val := range apps.Resources {
-					if val.Entity.SpaceGUID == sguid {
 
-						total.AI += val.Entity.Instances
-						total.mem += val.Entity.Instances * val.Entity.Memory
-						if val.Entity.State == "STARTED" {
-							total.AIStarted += val.Entity.Instances
-							total.memStarted += val.Entity.Instances * val.Entity.Memory
-							total.appStarted++
-						}
-
-						if orgs[oguid] != "system" { //&& orgs[oguid] != "p-spring-cloud-services" {
+				// count non system
+				if orgs[oguid] != "system" { //&& orgs[oguid] != "p-spring-cloud-services" {
+					for _, val := range apps.Resources {
+						if val.Entity.SpaceGUID == sguid {
 							total.AIUser += val.Entity.Instances
 							if val.Entity.State == "STARTED" {
 								total.AIUserStarted += val.Entity.Instances
 							}
 						}
+					}
+				}
 
-						fmt.Printf("%s,%s,%s,%d,%d,%s\n",
-							orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
-							val.Entity.Instances, val.Entity.Memory, val.Entity.State)
+				// STARTED first
+				for _, val := range apps.Resources {
+					if val.Entity.SpaceGUID == sguid && val.Entity.State == "STARTED" {
+
+						total.AI += val.Entity.Instances
+						total.mem += val.Entity.Instances * val.Entity.Memory
+
+						total.AIStarted += val.Entity.Instances
+						total.memStarted += val.Entity.Instances * val.Entity.Memory
+						total.appStarted++
+
+						table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+							strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State})
+						//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
+						//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+						//	val.Entity.Instances, val.Entity.Memory, val.Entity.State)
+					}
+				}
+				// any other state then
+				for _, val := range apps.Resources {
+					if val.Entity.SpaceGUID == sguid && val.Entity.State != "STARTED" {
+
+						total.AI += val.Entity.Instances
+						total.mem += val.Entity.Instances * val.Entity.Memory
+
+						table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+							strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State})
+						//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
+						//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+						//	val.Entity.Instances, val.Entity.Memory, val.Entity.State)
 					}
 				}
 			}
 		}
 	}
 
-	fmt.Printf("*** Summary \n")
-	fmt.Printf("org, space, app, app started, AI, AI started, AI user, AI user started, MB, MB started\n")
-	fmt.Printf("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", total.org, total.space, total.app, total.appStarted, total.AI, total.AIStarted, total.AIUser, total.AIUserStarted, total.mem, total.memStarted)
+	table.SetFooter([]string{strconv.Itoa(total.org), strconv.Itoa(total.space), strconv.Itoa(total.app), strconv.Itoa(total.AI), strconv.Itoa(total.mem), strconv.Itoa(total.appStarted) + " (started)"})
+	table.SetFooter([]string{"-", "-", "-", "-", "-", "-"})
+	table.Render()
+
+	// summary table
+	table = tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Category", "App", "AI", "Memory"})
+	table.Append([]string{"Total", strconv.Itoa(total.app), strconv.Itoa(total.AI), strconv.Itoa(total.mem)})
+	table.Append([]string{"Total (excl system)", "-", strconv.Itoa(total.AIUser), "-"})
+	table.Append([]string{"STARTED", strconv.Itoa(total.appStarted), strconv.Itoa(total.AIStarted), strconv.Itoa(total.memStarted)})
+	table.Append([]string{"STARTED (excl system)", "-", strconv.Itoa(total.AIUserStarted), "-"})
+	table.Render()
 
 	events := c.GetEventsData(cli, ins)
 	c.FilterResults(cli, ins, orgs, spaces, apps, events)
