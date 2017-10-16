@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	//	"sort"
 	"strconv"
 	"strings"
 
@@ -24,16 +25,17 @@ type OrgSearchResources struct {
 
 // OrgSearchEntity represents entity attribute of resources attribute within JSON response from Cloud Foundry API
 type OrgSearchEntity struct {
-	Name string `json:"name"`
+	Name      string `json:"name"`
+	QuotaGuid string `json:"quota_definition_guid"`
 }
 
-func (c Events) GetOrgs(cli plugin.CliConnection) map[string]string {
-	var data map[string]string
-	data = make(map[string]string)
+func (c Events) GetOrgs(cli plugin.CliConnection) map[string]OrgSearchEntity {
+	var data map[string]OrgSearchEntity
+	data = make(map[string]OrgSearchEntity)
 	orgs := c.GetOrgData(cli)
 
 	for _, val := range orgs.Resources {
-		data[val.Metadata.GUID] = val.Entity.Name
+		data[val.Metadata.GUID] = val.Entity
 	}
 
 	return data
@@ -52,6 +54,18 @@ func (c Events) GetOrgData(cli plugin.CliConnection) OrgSearchResults {
 		}
 	}
 
+	//sort by org name - TODO
+	/*
+		sort.Slice(&res.Resources, func(i, j int) bool {
+			switch strings.Compare(strings.ToLower(res.Resources[i].Entity.Name), strings.ToLower(res.Resources[j].Entity.Name)) {
+			case -1:
+				return true
+			case 1:
+				return false
+			}
+			return true
+		})
+	*/
 	return res
 }
 

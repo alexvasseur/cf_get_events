@@ -118,7 +118,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 			if space.OrgGUID == oguid {
 
 				// count non system
-				if orgs[oguid] != "system" { //&& orgs[oguid] != "p-spring-cloud-services" {
+				if orgs[oguid].Name != "system" { //&& orgs[oguid] != "p-spring-cloud-services" {
 					for _, val := range apps.Resources {
 						if val.Entity.SpaceGUID == sguid {
 							total.appUser++
@@ -144,7 +144,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 						total.memStarted += val.Entity.Instances * val.Entity.Memory
 						total.appStarted++
 
-						table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+						table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
 							strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State})
 						//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
 						//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
@@ -158,7 +158,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 						total.AI += val.Entity.Instances
 						total.mem += val.Entity.Instances * val.Entity.Memory
 
-						table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+						table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
 							strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State})
 						//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
 						//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
@@ -180,6 +180,14 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	table.Append([]string{"Total (excl system)", strconv.Itoa(total.appUser), strconv.Itoa(total.AIUser), strconv.Itoa(total.memUser)})
 	table.Append([]string{"STARTED", strconv.Itoa(total.appStarted), strconv.Itoa(total.AIStarted), strconv.Itoa(total.memStarted)})
 	table.Append([]string{"STARTED (excl system)", strconv.Itoa(total.appUserStarted), strconv.Itoa(total.AIUserStarted), strconv.Itoa(total.memUserStarted)})
+	table.Render()
+
+	// org mem usage
+	table = tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Org", "Memory Limit", "Memory", "Memory Usage %"})
+	for _, val := range c.GetOrgsSummary(cli) {
+		table.Append([]string{val.Name, strconv.Itoa(val.MemoryLimitOrgQuota), strconv.Itoa(val.Memory), strconv.Itoa(val.MemoryUsage)})
+	}
 	table.Render()
 
 	events := c.GetEventsData(cli, ins)

@@ -3,6 +3,8 @@
 This project is a fork
 This is being refactored to fit a different goal for indicators around Pivotal Cloud Foundry deployment
 
+Using go1.9.1
+
 * BELOW is the old doc of the upstream - you can ignore it *
 
 

@@ -6,22 +6,23 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cloudfoundry/cli/plugin"
 	"time"
+
+	"github.com/cloudfoundry/cli/plugin"
 )
 
 // OutputResults represents the filtered event results for the input args
 type OutputResults struct {
-	Comment      string  `json:"comment"`
-	Resources    []EventSearchResources `json:"resources"`
+	Comment   string                 `json:"comment"`
+	Resources []EventSearchResources `json:"resources"`
 }
 
 // EventSearchResults represents top level attributes of JSON response from Cloud Foundry API
 type EventSearchResults struct {
-	TotalResults int                  `json:"total_results"`
-	TotalPages   int                  `json:"total_pages"`
-	PrevUrl      string               `json:"prev_url"`
-	NextUrl      string               `json:"next_url"`
+	TotalResults int                    `json:"total_results"`
+	TotalPages   int                    `json:"total_pages"`
+	PrevUrl      string                 `json:"prev_url"`
+	NextUrl      string                 `json:"next_url"`
 	Resources    []EventSearchResources `json:"resources"`
 }
 
@@ -33,34 +34,33 @@ type EventSearchResources struct {
 
 // EventSearchEntity represents entity attribute of resources attribute within JSON response from Cloud Foundry API
 type EventSearchEntity struct {
-	Type                         string `json:"type"`
-	Actor                        string `json:"actor"`
-	ActorType                    string `json:"actor_type"`
-	ActorName                    string `json:"actor_name"`
-	Actee                        string `json:"actee"`
-	ActeeType                    string `json:"acte_type"`
-	ActeeName                    string `json:"actee_name"`
-	Timestamp                    string `json:"timestamp"`
+	Type      string                    `json:"type"`
+	Actor     string                    `json:"actor"`
+	ActorType string                    `json:"actor_type"`
+	ActorName string                    `json:"actor_name"`
+	Actee     string                    `json:"actee"`
+	ActeeType string                    `json:"acte_type"`
+	ActeeName string                    `json:"actee_name"`
+	Timestamp string                    `json:"timestamp"`
 	Metadata  EventSearchEntityMetadata `json:"metadata"`
-	SpaceGUID                    string `json:"space_guid"`
-	OrgGUID                      string `json:"organization_guid"`
-	Space                        string `json:"space"`
-	Org                          string `json:"org"`
+	SpaceGUID string                    `json:"space_guid"`
+	OrgGUID   string                    `json:"organization_guid"`
+	Space     string                    `json:"space"`
+	Org       string                    `json:"org"`
 }
 
 type EventSearchEntityMetadata struct {
-	Instance                string `json:"instance,omitempty"`
-	Index                   int    `json:"index,omitempty"`
-	ExitDescription         string `json:"exit_description,omitempty"`
-	Reason                  string `json:"reason,omitempty"`
-	Request     ESEMetadataRequest `json:"request,omitempty"`
+	Instance        string             `json:"instance,omitempty"`
+	Index           int                `json:"index,omitempty"`
+	ExitDescription string             `json:"exit_description,omitempty"`
+	Reason          string             `json:"reason,omitempty"`
+	Request         ESEMetadataRequest `json:"request,omitempty"`
 }
 
 type ESEMetadataRequest struct {
-	State                 string `json:"state"`
-	Recursive             string `json:"recursive"`
+	State     string `json:"state"`
+	Recursive string `json:"recursive"`
 }
-
 
 // GetEventsData requests all of the application events from Cloud Foundry
 func (c Events) GetEventsData(cli plugin.CliConnection, ins Inputs) EventSearchResults {
@@ -107,17 +107,17 @@ func (c Events) UnmarshallEventSearchResults(apiUrl string, cli plugin.CliConnec
 }
 
 // filter the results for given input criteria.
-func (c Events) FilterResults(cli plugin.CliConnection, ins Inputs, orgs map[string]string, spaces map[string]SpaceSearchEntity, apps AppSearchResults, events EventSearchResults) (OutputResults) {
+func (c Events) FilterResults(cli plugin.CliConnection, ins Inputs, orgs map[string]OrgSearchEntity, spaces map[string]SpaceSearchEntity, apps AppSearchResults, events EventSearchResults) OutputResults {
 	var results OutputResults
 
 	results.Comment = fmt.Sprintf("Following events were recorded from '%s', to '%s' \n\n", ins.fromDate, ins.toDate)
 
-	for _, val := range events.Resources  {
+	for _, val := range events.Resources {
 
 		evTmsp, _ := time.Parse(time.RFC3339, val.Entity.Timestamp)
 		// fmt.Println("timestamps: ", evTmsp.Nanosecond(), filterDate.Nanosecond(), )
 
-		if (evTmsp.Before(ins.fromDate)) {
+		if evTmsp.Before(ins.fromDate) {
 			// all events are retrieved in descending order.
 			// we processed all events that are filterDate onwards
 			// reached older events, break out
@@ -125,27 +125,27 @@ func (c Events) FilterResults(cli plugin.CliConnection, ins Inputs, orgs map[str
 			break
 		}
 
-		if (evTmsp.After(ins.toDate)) {
+		if evTmsp.After(ins.toDate) {
 			continue
 		}
 
 		var outEntity EventSearchResources
 
-		outEntity.Metadata  = val.Metadata
-		outEntity.Entity.Type      = val.Entity.Type
-		outEntity.Entity.Actor     = val.Entity.Actor
+		outEntity.Metadata = val.Metadata
+		outEntity.Entity.Type = val.Entity.Type
+		outEntity.Entity.Actor = val.Entity.Actor
 		outEntity.Entity.ActorType = val.Entity.ActorType
 		outEntity.Entity.ActorName = val.Entity.ActorName
-		outEntity.Entity.Actee     = val.Entity.Actee
+		outEntity.Entity.Actee = val.Entity.Actee
 		outEntity.Entity.ActeeType = val.Entity.ActeeType
 		outEntity.Entity.ActeeName = val.Entity.ActeeName
 		outEntity.Entity.Timestamp = val.Entity.Timestamp
-		outEntity.Entity.Metadata  = val.Entity.Metadata
+		outEntity.Entity.Metadata = val.Entity.Metadata
 		outEntity.Entity.SpaceGUID = val.Entity.SpaceGUID
-		outEntity.Entity.OrgGUID   = val.Entity.OrgGUID
-		outEntity.Entity.Org       = orgs[val.Entity.OrgGUID]
-		outEntity.Entity.Space     = spaces[val.Entity.SpaceGUID].Name
+		outEntity.Entity.OrgGUID = val.Entity.OrgGUID
+		outEntity.Entity.Org = orgs[val.Entity.OrgGUID].Name
+		outEntity.Entity.Space = spaces[val.Entity.SpaceGUID].Name
 		results.Resources = append(results.Resources, outEntity)
 	}
-	return results;
+	return results
 }
