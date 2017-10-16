@@ -46,17 +46,21 @@ type Inputs struct {
 	isJson   bool
 }
 
-type Counts struct {
-	org           int
-	space         int
-	app           int
-	appStarted    int
-	AI            int
-	AIStarted     int
-	AIUser        int
-	AIUserStarted int
-	mem           int
-	memStarted    int
+type Total struct {
+	org            int
+	space          int
+	app            int
+	appUser        int
+	appStarted     int
+	appUserStarted int
+	AI             int
+	AIStarted      int
+	AIUser         int
+	AIUserStarted  int
+	mem            int
+	memStarted     int
+	memUser        int
+	memUserStarted int
 }
 
 // GetMetadata provides the Cloud Foundry CLI with metadata to provide user about how to use `get-events` command
@@ -65,13 +69,13 @@ func (c *Events) GetMetadata() plugin.PluginMetadata {
 		Name: "bcr",
 		Version: plugin.VersionType{
 			Major: 0,
-			Minor: 1,
+			Minor: 2,
 			Build: 0,
 		},
 		Commands: []plugin.Command{
 			{
-				Name:     "bcr-get-events",
-				HelpText: "Get microservice events (by akoranne@ecsteam.com)",
+				Name:     "bcr-apps",
+				HelpText: "Get Apps consumption details",
 				UsageDetails: plugin.Usage{
 					Usage: UsageText(),
 				},
@@ -89,7 +93,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	var ins Inputs
 
 	switch args[0] {
-	case "bcr-get-events":
+	case "bcr-apps":
 		ins = c.buildClientOptions(args)
 	case "example-alternate-command":
 	default:
@@ -100,7 +104,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	spaces := c.GetSpaces(cli)
 	apps := c.GetAppData(cli)
 
-	var total Counts
+	var total Total
 	total.org = len(orgs)
 	total.space = len(spaces)
 	total.app = len(apps.Resources)
@@ -117,9 +121,13 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 				if orgs[oguid] != "system" { //&& orgs[oguid] != "p-spring-cloud-services" {
 					for _, val := range apps.Resources {
 						if val.Entity.SpaceGUID == sguid {
+							total.appUser++
 							total.AIUser += val.Entity.Instances
+							total.memUser += val.Entity.Instances * val.Entity.Memory
 							if val.Entity.State == "STARTED" {
 								total.AIUserStarted += val.Entity.Instances
+								total.appUserStarted++
+								total.memUserStarted += val.Entity.Instances * val.Entity.Memory
 							}
 						}
 					}
@@ -169,9 +177,9 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	table = tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Category", "App", "AI", "Memory"})
 	table.Append([]string{"Total", strconv.Itoa(total.app), strconv.Itoa(total.AI), strconv.Itoa(total.mem)})
-	table.Append([]string{"Total (excl system)", "-", strconv.Itoa(total.AIUser), "-"})
+	table.Append([]string{"Total (excl system)", strconv.Itoa(total.appUser), strconv.Itoa(total.AIUser), strconv.Itoa(total.memUser)})
 	table.Append([]string{"STARTED", strconv.Itoa(total.appStarted), strconv.Itoa(total.AIStarted), strconv.Itoa(total.memStarted)})
-	table.Append([]string{"STARTED (excl system)", "-", strconv.Itoa(total.AIUserStarted), "-"})
+	table.Append([]string{"STARTED (excl system)", strconv.Itoa(total.appUserStarted), strconv.Itoa(total.AIUserStarted), strconv.Itoa(total.memUserStarted)})
 	table.Render()
 
 	events := c.GetEventsData(cli, ins)
