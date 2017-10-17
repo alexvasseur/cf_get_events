@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -109,11 +110,28 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	total.space = len(spaces)
 	total.app = len(apps.Resources)
 
+	// sort orgs by org Name
+	i := 0
+	sortedOrgs := make([]string, len(orgs))
+	for k := range orgs {
+		sortedOrgs[i] = k
+		i++
+	}
+	sort.Slice(sortedOrgs, func(i, j int) bool {
+		switch strings.Compare(strings.ToLower(orgs[sortedOrgs[i]].Name), strings.ToLower(orgs[sortedOrgs[j]].Name)) {
+		case -1:
+			return true
+		case 1:
+			return false
+		}
+		return true
+	})
+
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Org", "Space", "App", "AI", "Memory", "State"})
 
 	// order by Orgs, then by Space, then by State
-	for oguid, _ := range orgs {
+	for _, oguid := range sortedOrgs {
 		for sguid, space := range spaces {
 			if space.OrgGUID == oguid {
 
@@ -185,7 +203,9 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	// org mem usage
 	table = tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Org", "Memory Limit", "Memory", "Memory Usage %"})
-	for _, val := range c.GetOrgsSummary(cli) {
+	var orgsSummary = c.GetOrgsSummary(cli)
+	for _, oguid := range sortedOrgs {
+		val := orgsSummary[oguid]
 		table.Append([]string{val.Name, strconv.Itoa(val.MemoryLimitOrgQuota), strconv.Itoa(val.Memory), strconv.Itoa(val.MemoryUsage)})
 	}
 	table.Render()
