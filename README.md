@@ -1,3 +1,15 @@
+# ABOUT
+
+This Cloud Foundry CLI plugin reports on ..
+
+It is called *BCR* as in _Basic Consumption Report_
+though it aims at helping organizations and platform team & leads doing accounting of usage and tracking value they get from their Cloud Foundry rollout by also measuring People dimensions (members & usage velocity)
+
+( _cf_get_events_ is a historical upstream fork name and has nothing to do with that project altough CC events are great to compute velocity - great work from ECSTeam)
+
+This project is authored by a Pivotal employee and Cloud Foundry advocate under open source license terms.
+
+
 # IMPORTANT
 
 This project is a fork
