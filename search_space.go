@@ -30,8 +30,7 @@ type SpaceSearchEntity struct {
 
 // GetSpaceData requests all of the Application data from Cloud Foundry
 func (c Events) GetSpaces(cli plugin.CliConnection) map[string]SpaceSearchEntity {
-	var data map[string]SpaceSearchEntity
-	data = make(map[string]SpaceSearchEntity)
+	var data = make(map[string]SpaceSearchEntity)
 	spaces := c.GetSpaceData(cli)
 
 	for _, val := range spaces.Resources {

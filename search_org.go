@@ -30,8 +30,7 @@ type OrgSearchEntity struct {
 }
 
 func (c Events) GetOrgs(cli plugin.CliConnection) map[string]OrgSearchEntity {
-	var data map[string]OrgSearchEntity
-	data = make(map[string]OrgSearchEntity)
+	var data = make(map[string]OrgSearchEntity)
 	orgs := c.GetOrgData(cli)
 
 	for _, val := range orgs.Resources {

@@ -35,8 +35,7 @@ type QuotaEntity struct {
 }
 
 func (c Events) GetOrgsSummary(cli plugin.CliConnection) map[string]OrgSummary {
-	var data map[string]OrgSummary
-	data = make(map[string]OrgSummary)
+	var data = make(map[string]OrgSummary)
 	orgs := c.GetOrgData(cli)
 
 	var quotaCache = make(map[string]QuotaDefinition)

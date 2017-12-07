@@ -45,6 +45,8 @@ type Inputs struct {
 	toDate   time.Time
 	isCsv    bool
 	isJson   bool
+	AI       bool
+	SI       bool
 }
 
 type Total struct {
@@ -62,6 +64,11 @@ type Total struct {
 	memStarted     int
 	memUser        int
 	memUserStarted int
+	si             int
+	siMySQL        int
+	siRabbitMQ     int
+	siRedis        int
+	siOther        int
 }
 
 // GetMetadata provides the Cloud Foundry CLI with metadata to provide user about how to use `get-events` command
@@ -69,14 +76,14 @@ func (c *Events) GetMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name: "bcr",
 		Version: plugin.VersionType{
-			Major: 0,
-			Minor: 2,
+			Major: 1,
+			Minor: 0,
 			Build: 0,
 		},
 		Commands: []plugin.Command{
 			{
-				Name:     "bcr-apps",
-				HelpText: "Get Apps consumption details",
+				Name:     "bcr",
+				HelpText: "Get Apps and Services consumption details",
 				UsageDetails: plugin.Usage{
 					Usage: UsageText(),
 				},
@@ -94,21 +101,48 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	var ins Inputs
 
 	switch args[0] {
-	case "bcr-apps":
-		ins = c.buildClientOptions(args)
-	case "example-alternate-command":
+	case "bcr":
+		if len(args) >= 2 {
+			ins = c.buildClientOptions(args)
+		} else {
+			Usage(1)
+		}
 	default:
-		return
+		Usage(0)
 	}
 
 	orgs := c.GetOrgs(cli)
 	spaces := c.GetSpaces(cli)
-	apps := c.GetAppData(cli)
-
 	var total Total
 	total.org = len(orgs)
 	total.space = len(spaces)
-	total.app = len(apps.Resources)
+
+	var services map[string]ServiceSearchEntity
+	var plans map[string]ServicePlanSearchEntity
+	var serviceInstances map[string]ServiceInstanceSearchEntity
+	var apps AppSearchResults
+
+	// Data loading
+	if ins.SI {
+		services = c.GetServices(cli)
+		plans = c.GetServicePlans(cli)
+		serviceInstances = c.GetServiceInstances(cli)
+	}
+	if ins.AI {
+		apps = c.GetAppData(cli)
+	}
+
+	// services instances -- DEBUG only
+	if ins.SI && false {
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"Org", "Space", "Service Instance"})
+		//TODO loop on org, space id
+		for _, si := range serviceInstances {
+			table.Append([]string{orgs[spaces[si.SpaceGuid].OrgGUID].Name, spaces[si.SpaceGuid].Name, si.Name})
+		}
+		table.Render()
+
+	}
 
 	// sort orgs by org Name
 	i := 0
@@ -126,100 +160,234 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 		}
 		return true
 	})
+	//TODO sort space by Name and use it below
+	//TODO for some reasons space is at least grouped?
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Org", "Space", "App", "AI", "Memory", "State"})
+	// *** SI table
+	if ins.SI {
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"Org", "Space", "SI", "Pivotal MySQL", "Pivotal RabbitMQ", "Pivotal Redis", "Other Services"})
+		//TODO - BROKERAGE, other?
+		for _, oguid := range sortedOrgs {
+			for sguid, space := range spaces {
+				if space.OrgGUID == oguid {
 
-	// order by Orgs, then by Space, then by State
-	for _, oguid := range sortedOrgs {
-		for sguid, space := range spaces {
-			if space.OrgGUID == oguid {
+					siSpace := 0
+					siList := make(map[string]int)
 
-				// count non system
-				if orgs[oguid].Name != "system" { //&& orgs[oguid] != "p-spring-cloud-services" {
-					for _, val := range apps.Resources {
-						if val.Entity.SpaceGUID == sguid {
-							total.appUser++
-							total.AIUser += val.Entity.Instances
-							total.memUser += val.Entity.Instances * val.Entity.Memory
-							if val.Entity.State == "STARTED" {
-								total.AIUserStarted += val.Entity.Instances
-								total.appUserStarted++
-								total.memUserStarted += val.Entity.Instances * val.Entity.Memory
+					for _, si := range serviceInstances {
+						if si.SpaceGuid == sguid && si.Type == "managed_service_instance" {
+							siSpace++
+							siList[services[plans[si.ServicePlanGuid].ServiceGuid].Label /*+":"+plans[si.ServicePlanGuid].Name*/] += 1
+						}
+					}
+					flat := []string{}
+					siMySQL := 0
+					siRabbitMQ := 0
+					siRedis := 0
+					siOther := 0
+					for n, c := range siList {
+						total.si += c
+						switch n {
+						case "p-mysql":
+							siMySQL += c
+							total.siMySQL += c
+						case "p.mysql":
+							siMySQL += c
+							total.siMySQL += c
+						case "p-rabbitmq":
+							siRabbitMQ += c
+							total.siRabbitMQ += c
+						case "p.rabbitmq":
+							siRabbitMQ += c
+							total.siRabbitMQ += c
+						case "p-redis":
+							siRedis += c
+							total.siRedis += c
+						case "p.redis":
+							siRedis += c
+							total.siRedis += c
+						default:
+							siOther += c
+							total.siOther += c
+							flat = append(flat, n+":"+strconv.Itoa(c))
+						}
+						//flat = append(flat, n+":"+strconv.Itoa(c))
+					}
+					siMySQLstring := ""
+					if siMySQL > 0 {
+						siMySQLstring = strconv.Itoa(siMySQL)
+					}
+					siRabbitMQstring := ""
+					if siRabbitMQ > 0 {
+						siRabbitMQstring = strconv.Itoa(siRabbitMQ)
+					}
+					siRedisstring := ""
+					if siRedis > 0 {
+						siRedisstring = strconv.Itoa(siRedis)
+					}
+					table.Append([]string{orgs[oguid].Name, spaces[sguid].Name, strconv.Itoa(siSpace),
+						siMySQLstring, siRabbitMQstring, siRedisstring,
+						strings.Join(flat, ",")})
+
+				}
+			}
+		}
+		//TODO total SI and Pivotal SI
+		table.SetFooter([]string{"-", "-", strconv.Itoa(total.si), strconv.Itoa(total.siMySQL), strconv.Itoa(total.siRabbitMQ), strconv.Itoa(total.siRedis), strconv.Itoa(total.siOther) + " (Pivotal: " + strconv.Itoa(total.si-total.siOther) + ")"})
+		table.Render()
+	}
+
+	// *** SI summary
+	// sort service by service Label
+	i = 0
+	sortedServices := make([]string, len(services))
+	for k := range services {
+		sortedServices[i] = k
+		i++
+	}
+	sort.Slice(sortedServices, func(i, j int) bool {
+		switch strings.Compare(strings.ToLower(services[sortedServices[i]].Label), strings.ToLower(services[sortedServices[j]].Label)) {
+		case -1:
+			return true
+		case 1:
+			return false
+		}
+		return true
+	})
+	if ins.SI {
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"Service", "Plan", "Service Instances"})
+		for _, guid := range sortedServices {
+			for planGuid, plan := range plans {
+				if plan.ServiceGuid == guid {
+					var count = 0
+					for _, si := range serviceInstances {
+						if si.ServicePlanGuid == planGuid {
+							count++
+						}
+					}
+					table.Append([]string{services[plan.ServiceGuid].Label, plan.Name, strconv.Itoa(count)})
+				}
+			}
+		}
+		table.Render()
+	}
+
+	// *** APP table
+	if ins.AI {
+		total.app = len(apps.Resources)
+
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"Org", "Space", "App", "AI", "Memory", "State", "Memory usage"})
+
+		// order by Orgs, then by Space, then by State
+		for _, oguid := range sortedOrgs {
+			for sguid, space := range spaces {
+				if space.OrgGUID == oguid {
+
+					// count non system only
+					if orgs[oguid].Name != "system" { //&& orgs[oguid] != "p-spring-cloud-services" {
+						for _, val := range apps.Resources {
+							if val.Entity.SpaceGUID == sguid {
+								total.appUser++
+								total.AIUser += val.Entity.Instances
+								total.memUser += val.Entity.Instances * val.Entity.Memory
+								if val.Entity.State == "STARTED" {
+									total.AIUserStarted += val.Entity.Instances
+									total.appUserStarted++
+									total.memUserStarted += val.Entity.Instances * val.Entity.Memory
+								}
 							}
 						}
 					}
-				}
 
-				// STARTED first
-				for _, val := range apps.Resources {
-					if val.Entity.SpaceGUID == sguid && val.Entity.State == "STARTED" {
+					// STARTED first
+					for _, val := range apps.Resources {
+						if val.Entity.SpaceGUID == sguid && val.Entity.State == "STARTED" {
 
-						total.AI += val.Entity.Instances
-						total.mem += val.Entity.Instances * val.Entity.Memory
+							total.AI += val.Entity.Instances
+							total.mem += val.Entity.Instances * val.Entity.Memory
 
-						total.AIStarted += val.Entity.Instances
-						total.memStarted += val.Entity.Instances * val.Entity.Memory
-						total.appStarted++
+							total.AIStarted += val.Entity.Instances
+							total.memStarted += val.Entity.Instances * val.Entity.Memory
+							total.appStarted++
 
-						table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
-							strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State})
-						//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
-						//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
-						//	val.Entity.Instances, val.Entity.Memory, val.Entity.State)
+							memUsage := val.Entity.Instances * val.Entity.Memory
+
+							table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+								strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State, strconv.Itoa(memUsage)})
+							//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
+							//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+							//	val.Entity.Instances, val.Entity.Memory, val.Entity.State)
+						}
 					}
-				}
-				// any other state then
-				for _, val := range apps.Resources {
-					if val.Entity.SpaceGUID == sguid && val.Entity.State != "STARTED" {
+					// any other state then
+					for _, val := range apps.Resources {
+						if val.Entity.SpaceGUID == sguid && val.Entity.State != "STARTED" {
 
-						total.AI += val.Entity.Instances
-						total.mem += val.Entity.Instances * val.Entity.Memory
+							total.AI += val.Entity.Instances
+							total.mem += val.Entity.Instances * val.Entity.Memory
 
-						table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
-							strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State})
-						//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
-						//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
-						//	val.Entity.Instances, val.Entity.Memory, val.Entity.State)
+							table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+								strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State, ""})
+							//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
+							//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+							//	val.Entity.Instances, val.Entity.Memory, val.Entity.State)
+						}
 					}
 				}
 			}
 		}
-	}
 
-	table.SetFooter([]string{strconv.Itoa(total.org), strconv.Itoa(total.space), strconv.Itoa(total.app), strconv.Itoa(total.AI), strconv.Itoa(total.mem), strconv.Itoa(total.appStarted) + " (started)"})
-	table.SetFooter([]string{"-", "-", "-", "-", "-", "-"})
-	table.Render()
+		table.SetFooter([]string{strconv.Itoa(total.org), strconv.Itoa(total.space), strconv.Itoa(total.app), strconv.Itoa(total.AI), strconv.Itoa(total.mem), strconv.Itoa(total.appStarted) + " (started)", strconv.Itoa(total.memStarted)})
+		table.SetFooter([]string{"-", "-", "-", "-", "-", "-"})
+		table.Render()
 
-	// summary table
-	table = tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Category", "App", "AI", "Memory"})
-	table.Append([]string{"Total", strconv.Itoa(total.app), strconv.Itoa(total.AI), strconv.Itoa(total.mem)})
-	table.Append([]string{"Total (excl system)", strconv.Itoa(total.appUser), strconv.Itoa(total.AIUser), strconv.Itoa(total.memUser)})
-	table.Append([]string{"STARTED", strconv.Itoa(total.appStarted), strconv.Itoa(total.AIStarted), strconv.Itoa(total.memStarted)})
-	table.Append([]string{"STARTED (excl system)", strconv.Itoa(total.appUserStarted), strconv.Itoa(total.AIUserStarted), strconv.Itoa(total.memUserStarted)})
-	table.Render()
+		// org mem usage and AI running per org
+		table = tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"Org", "Memory Limit", "Memory Usage", "Usage %", "AI (started)"})
+		var orgsSummary = c.GetOrgsSummary(cli)
+		for _, oguid := range sortedOrgs {
+			val := orgsSummary[oguid]
+			aicount := 0
+			for spaceGuid, space := range spaces {
+				if space.OrgGUID == oguid {
+					for _, app := range apps.Resources {
+						if app.Entity.SpaceGUID == spaceGuid && app.Entity.State == "STARTED" {
+							aicount += app.Entity.Instances
+						}
+					}
+				}
+			}
 
-	// org mem usage
-	table = tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Org", "Memory Limit", "Memory", "Memory Usage %"})
-	var orgsSummary = c.GetOrgsSummary(cli)
-	for _, oguid := range sortedOrgs {
-		val := orgsSummary[oguid]
-		table.Append([]string{val.Name, strconv.Itoa(val.MemoryLimitOrgQuota), strconv.Itoa(val.Memory), strconv.Itoa(val.MemoryUsage)})
-	}
-	table.Render()
-
-	events := c.GetEventsData(cli, ins)
-	c.FilterResults(cli, ins, orgs, spaces, apps, events)
-	//results := c.FilterResults(cli, ins, orgs, spaces, apps, events)
-	/*
-		if ins.isCsv {
-			c.EventsInCSVFormat(results)
-		} else {
-			c.EventsInJsonFormat(results)
+			table.Append([]string{val.Name, strconv.Itoa(val.MemoryLimitOrgQuota), strconv.Itoa(val.Memory), strconv.Itoa(val.MemoryUsage), strconv.Itoa(aicount)})
 		}
-	*/
+		table.Render()
+
+		// summary table
+		table = tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"Category", "App", "AI", "Memory"})
+		table.Append([]string{"Total", strconv.Itoa(total.app), strconv.Itoa(total.AI), strconv.Itoa(total.mem)})
+		table.Append([]string{"Total (excl system)", strconv.Itoa(total.appUser), strconv.Itoa(total.AIUser), strconv.Itoa(total.memUser)})
+		table.Append([]string{"STARTED", strconv.Itoa(total.appStarted), strconv.Itoa(total.AIStarted), strconv.Itoa(total.memStarted)})
+		table.Append([]string{"STARTED (excl system)", strconv.Itoa(total.appUserStarted), strconv.Itoa(total.AIUserStarted), strconv.Itoa(total.memUserStarted)})
+		table.Render()
+
+	}
+
+	if false {
+		events := c.GetEventsData(cli, ins)
+		c.FilterResults(cli, ins, orgs, spaces, apps, events)
+		//results := c.FilterResults(cli, ins, orgs, spaces, apps, events)
+		/*
+			if ins.isCsv {
+				c.EventsInCSVFormat(results)
+			} else {
+				c.EventsInJsonFormat(results)
+			}
+		*/
+	}
 }
 
 func Usage(code int) {
@@ -241,6 +409,9 @@ func UsageText() string {
 		"\n       --to <yyyymmddhhmmss>    : get events till given date and time\n" +
 		"\n       --from <yyyymmdd> --to <yyyymmdd>" +
 		"\n       --from <yyyymmddhhmmss> --to <yyyymmddhhmmss>"
+	usage = "cf bcr [options]" +
+		"\n	--ai" +
+		"\n	--si"
 	return usage
 }
 
@@ -274,6 +445,11 @@ func (c *Events) buildClientOptions(args []string) Inputs {
 	fc.NewStringFlag("from", "fr", "get events from given date [+ time] onwards (till now)")
 	fc.NewStringFlag("to", "to", "get events till given date [+ time]")
 	fc.NewBoolFlag("json", "js", "list output in json format (default is csv)")
+
+	// for AI SI
+	fc.NewBoolFlag("ai", "ai", "Application instances")
+	fc.NewBoolFlag("si", "si", "Service instances")
+
 	err := fc.Parse(args[1:]...)
 
 	if err != nil {
@@ -282,12 +458,18 @@ func (c *Events) buildClientOptions(args []string) Inputs {
 	}
 
 	today := time.Now()
-
 	var ins Inputs
 	ins.isCsv = true
 	ins.isJson = false
 	ins.fromDate = GetStartOfDay(today)
 	ins.toDate = time.Now()
+
+	if fc.IsSet("ai") {
+		ins.AI = true
+	}
+	if fc.IsSet("si") {
+		ins.SI = true
+	}
 
 	if fc.IsSet("all") {
 		nintyDays := time.Hour * -(24 * 90)
@@ -358,6 +540,7 @@ func (c *Events) buildClientOptions(args []string) Inputs {
 		ins.isJson = true
 		ins.isCsv = false
 	}
+
 	// fmt.Println("-------> (1) ins - ", ins.fromDate, ins.toDate)
 
 	return ins
