@@ -18,7 +18,25 @@ This is being refactored to fit a different goal for indicators around Pivotal C
 Using go1.9.1
 
 ```
-~/s/g/s/g/E/cf_get_events (master|✚4…) $ cf bcr-apps --today
+cf bcr --ai --si
+
+
++-------------------------+-------------------------+----+---------------+------------------+---------------+----------------------------------------------------------------------+
+|           ORG           |          SPACE          | SI | PIVOTAL MYSQL | PIVOTAL RABBITMQ | PIVOTAL REDIS |                            OTHER SERVICES                            |
++-------------------------+-------------------------+----+---------------+------------------+---------------+----------------------------------------------------------------------+
+| ATM                     | prod                    |  7 |             1 |                  |             4 | p-service-registry:1,scheduler-for-pcf:1                             |
+| ATM                     | test                    |  9 |             1 |                1 |             4 | scheduler-for-pcf:1,app-autoscaler:1,p-service-registry:1            |
+| ATM                     | stage                   |  7 |             1 |                  |             4 | p-service-registry:1,scheduler-for-pcf:1                             |
+| development             | xx                      |  0 |               |                  |               |                                                                      |
+| development             | volumes                 |  1 |               |                  |               | nfs:1                                                                |
+| microservices           | cnt-fortune-teller      |  5 |             2 |                  |               | p-service-registry:1,p-config-server:1,p-circuit-breaker-dashboard:1 |
+| microservices           | sc-stream               |  1 |               |                1 |               |                                                                      |
+| p-spring-cloud-services | instances               |  3 |               |                3 |               |                                                                      |
+| Pivotal                 | mongodb                 |  1 |               |                  |               | p-mongodb:1                                                          |
+...
+
+
+
 +-------------------------+-------------------------+----------------------------------------------+-----+--------+--------------+
 |           ORG           |          SPACE          |                     APP                      | AI  | MEMORY |    STATE     |
 +-------------------------+-------------------------+----------------------------------------------+-----+--------+--------------+
