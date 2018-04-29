@@ -47,6 +47,7 @@ type Inputs struct {
 	isJson   bool
 	AI       bool
 	SI       bool
+	monthly  bool
 }
 
 type Total struct {
@@ -71,12 +72,12 @@ type Total struct {
 	siOther        int
 }
 
-// GetMetadata provides the Cloud Foundry CLI with metadata to provide user about how to use `get-events` command
+// GetMetadata provides the Cloud Foundry CLI with metadata to provide user about how to use `bcr` command
 func (c *Events) GetMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name: "bcr",
 		Version: plugin.VersionType{
-			Major: 1,
+			Major: 2,
 			Minor: 0,
 			Build: 0,
 		},
@@ -96,7 +97,7 @@ func main() {
 	plugin.Start(new(Events))
 }
 
-// Run is what is executed by the Cloud Foundry CLI when the get-events command is specified
+// Run is what is executed by the Cloud Foundry CLI when the bcr command is specified
 func (c Events) Run(cli plugin.CliConnection, args []string) {
 	var ins Inputs
 
@@ -109,6 +110,19 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 		}
 	default:
 		Usage(0)
+	}
+
+	if ins.monthly {
+		month := c.GetMonthlyUsage(cli)
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"Year", "Month", "AI avg", "AI max", "Task concurrent", "Task total runs"})
+		for _, m := range month {
+			table.Append([]string{
+				strconv.Itoa(m.Year), strconv.Itoa(m.Month),
+				fmt.Sprintf("%.0f", m.Avg), strconv.Itoa(m.Max),
+				strconv.Itoa(m.TaskMaxConcurrent), strconv.Itoa(m.TaskTotalRun)})
+		}
+		table.Render()
 	}
 
 	orgs := c.GetOrgs(cli)
@@ -396,7 +410,7 @@ func Usage(code int) {
 }
 
 func UsageText() string {
-	usage := "cf get-events [options]" +
+	/*	usage := "cf get-events [options]" +
 		"\n    where options include: " +
 		"\n       --today                  : get all events for today (till now)" +
 		"\n       --yesterday              : get events for yesterday only" +
@@ -409,9 +423,11 @@ func UsageText() string {
 		"\n       --to <yyyymmddhhmmss>    : get events till given date and time\n" +
 		"\n       --from <yyyymmdd> --to <yyyymmdd>" +
 		"\n       --from <yyyymmddhhmmss> --to <yyyymmddhhmmss>"
-	usage = "cf bcr [options]" +
+	*/
+	usage := "cf bcr [options]" +
 		"\n	--ai" +
-		"\n	--si"
+		"\n	--si" +
+		"\n	--monthly"
 	return usage
 }
 
@@ -438,17 +454,20 @@ func sanitize(data string) string {
 // read arguments passed for the plugin
 func (c *Events) buildClientOptions(args []string) Inputs {
 	fc := flags.New()
-	fc.NewBoolFlag("all", "all", " get all events (defaults to last 90 days)")
-	fc.NewBoolFlag("today", "today", "get all events for today (till now)")
-	fc.NewBoolFlag("yesterday", "yest", "get events from yesterday only")
-	fc.NewBoolFlag("yesterday-on", "yon", "get events for yesterday onwards (till now)")
-	fc.NewStringFlag("from", "fr", "get events from given date [+ time] onwards (till now)")
-	fc.NewStringFlag("to", "to", "get events till given date [+ time]")
-	fc.NewBoolFlag("json", "js", "list output in json format (default is csv)")
+	/*
+		fc.NewBoolFlag("all", "all", " get all events (defaults to last 90 days)")
+		fc.NewBoolFlag("today", "today", "get all events for today (till now)")
+		fc.NewBoolFlag("yesterday", "yest", "get events from yesterday only")
+		fc.NewBoolFlag("yesterday-on", "yon", "get events for yesterday onwards (till now)")
+		fc.NewStringFlag("from", "fr", "get events from given date [+ time] onwards (till now)")
+		fc.NewStringFlag("to", "to", "get events till given date [+ time]")
+		fc.NewBoolFlag("json", "js", "list output in json format (default is csv)")
+	*/
 
 	// for AI SI
 	fc.NewBoolFlag("ai", "ai", "Application instances")
 	fc.NewBoolFlag("si", "si", "Service instances")
+	fc.NewBoolFlag("monthly", "monthly", "Monthly usage report, last 7 months")
 
 	err := fc.Parse(args[1:]...)
 
@@ -470,79 +489,82 @@ func (c *Events) buildClientOptions(args []string) Inputs {
 	if fc.IsSet("si") {
 		ins.SI = true
 	}
-
-	if fc.IsSet("all") {
-		nintyDays := time.Hour * -(24 * 90)
-		ins.fromDate = today.Add(nintyDays) // today - 90  days
+	if fc.IsSet("monthly") {
+		ins.monthly = true
 	}
-	if fc.IsSet("today") {
-		ins.fromDate = GetStartOfDay(today)
-	}
-	if fc.IsSet("yesterday") {
-		oneDay := time.Hour * -24
-		ins.fromDate = GetStartOfDay(today.Add(oneDay)) // today - 1 day
-		ins.toDate = GetEndOfDay(ins.fromDate)
-	}
-	if fc.IsSet("yesterday-on") {
-		oneDay := time.Hour * -24
-		ins.fromDate = GetStartOfDay(today.Add(oneDay)) // today - 1 day
-	}
-	if fc.IsSet("from") {
-		var value = fc.String("from")
-		var layout string
-
-		switch len(value) {
-		case 8:
-			layout = "20060102" // yyyymmdd
-		case 14:
-			layout = "20060102150405" // yyyymmddhhmmss
-		default:
-			fmt.Println("Error: Failed to parse `from` date - ", value)
-			fmt.Println(err)
-			Usage(1)
+	/*
+		if fc.IsSet("all") {
+			nintyDays := time.Hour * -(24 * 90)
+			ins.fromDate = today.Add(nintyDays) // today - 90  days
 		}
-		t, err := time.Parse(layout, value)
-		// fmt.Println("-------> (1) filter date - ", t, filterDate, err)
-		if err != nil {
-			fmt.Println("Error: Failed to parse `from` date - ", value)
-			fmt.Println(err)
-			Usage(1)
-		} else {
-			ins.fromDate = t
+		if fc.IsSet("today") {
+			ins.fromDate = GetStartOfDay(today)
 		}
-	}
-	if fc.IsSet("to") {
-		var value = fc.String("to")
-		const layout = "20060102150405" // yyyymmdd
-
-		switch len(value) {
-		case 8:
-			value = value + "235959"
-		case 14:
-		default:
-			fmt.Println("Error: Failed to parse `from` date - ", value)
-			fmt.Println(err)
-			Usage(1)
+		if fc.IsSet("yesterday") {
+			oneDay := time.Hour * -24
+			ins.fromDate = GetStartOfDay(today.Add(oneDay)) // today - 1 day
+			ins.toDate = GetEndOfDay(ins.fromDate)
 		}
-		t, err := time.Parse(layout, value)
-		// fmt.Println("-------> (1) filter date - ", t, filterDate, err)
-		if err != nil {
-			fmt.Println("Error: Failed to parse given date - ", value)
-			fmt.Println(err)
-			Usage(1)
-		} else {
-			// filterDate = fmt.Sprintf("%s", t.Format("2006-01-02"))
-			ins.toDate = t
+		if fc.IsSet("yesterday-on") {
+			oneDay := time.Hour * -24
+			ins.fromDate = GetStartOfDay(today.Add(oneDay)) // today - 1 day
 		}
-	}
+		if fc.IsSet("from") {
+			var value = fc.String("from")
+			var layout string
 
-	if fc.IsSet("json") {
-		ins.isJson = true
-		ins.isCsv = false
-	}
+			switch len(value) {
+			case 8:
+				layout = "20060102" // yyyymmdd
+			case 14:
+				layout = "20060102150405" // yyyymmddhhmmss
+			default:
+				fmt.Println("Error: Failed to parse `from` date - ", value)
+				fmt.Println(err)
+				Usage(1)
+			}
+			t, err := time.Parse(layout, value)
+			// fmt.Println("-------> (1) filter date - ", t, filterDate, err)
+			if err != nil {
+				fmt.Println("Error: Failed to parse `from` date - ", value)
+				fmt.Println(err)
+				Usage(1)
+			} else {
+				ins.fromDate = t
+			}
+		}
+		if fc.IsSet("to") {
+			var value = fc.String("to")
+			const layout = "20060102150405" // yyyymmdd
 
-	// fmt.Println("-------> (1) ins - ", ins.fromDate, ins.toDate)
+			switch len(value) {
+			case 8:
+				value = value + "235959"
+			case 14:
+			default:
+				fmt.Println("Error: Failed to parse `from` date - ", value)
+				fmt.Println(err)
+				Usage(1)
+			}
+			t, err := time.Parse(layout, value)
+			// fmt.Println("-------> (1) filter date - ", t, filterDate, err)
+			if err != nil {
+				fmt.Println("Error: Failed to parse given date - ", value)
+				fmt.Println(err)
+				Usage(1)
+			} else {
+				// filterDate = fmt.Sprintf("%s", t.Format("2006-01-02"))
+				ins.toDate = t
+			}
+		}
 
+		if fc.IsSet("json") {
+			ins.isJson = true
+			ins.isCsv = false
+		}
+
+		// fmt.Println("-------> (1) ins - ", ins.fromDate, ins.toDate)
+	*/
 	return ins
 }
 
