@@ -112,6 +112,9 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 		Usage(0)
 	}
 
+	api, _ := cli.ApiEndpoint()
+	fmt.Printf("%s\n", api)
+
 	if ins.monthly {
 		month := c.GetMonthlyUsage(cli)
 		table := tablewriter.NewWriter(os.Stdout)
