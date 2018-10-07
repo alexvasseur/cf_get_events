@@ -46,15 +46,13 @@ func (c Events) GetServiceInstances(cli plugin.CliConnection) map[string]Service
 func (c Events) GetServiceInstanceData(cli plugin.CliConnection) ServiceInstanceSearchResults {
 	var res ServiceInstanceSearchResults
 	res = c.UnmarshallServiceInstanceSearchResults("/v2/service_instances?order-direction=asc&results-per-page=100", cli)
-
 	if res.TotalPages > 1 {
 		for i := 2; i <= res.TotalPages; i++ {
-			apiUrl := fmt.Sprintf("/v2/services_instances?order-direction=asc&page=%v&results-per-page=100", strconv.Itoa(i))
+			apiUrl := fmt.Sprintf("/v2/service_instances?order-direction=asc&page=%v&results-per-page=100", strconv.Itoa(i))
 			tRes := c.UnmarshallServiceInstanceSearchResults(apiUrl, cli)
 			res.Resources = append(res.Resources, tRes.Resources...)
 		}
 	}
-
 	return res
 }
 
@@ -63,6 +61,5 @@ func (c Events) UnmarshallServiceInstanceSearchResults(apiUrl string, cli plugin
 	cmd := []string{"curl", apiUrl}
 	output, _ := cli.CliCommandWithoutTerminalOutput(cmd...)
 	json.Unmarshal([]byte(strings.Join(output, "")), &tRes)
-
 	return tRes
 }

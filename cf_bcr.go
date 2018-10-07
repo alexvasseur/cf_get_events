@@ -78,7 +78,7 @@ func (c *Events) GetMetadata() plugin.PluginMetadata {
 		Name: "bcr",
 		Version: plugin.VersionType{
 			Major: 2,
-			Minor: 0,
+			Minor: 1,
 			Build: 0,
 		},
 		Commands: []plugin.Command{

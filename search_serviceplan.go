@@ -47,7 +47,7 @@ func (c Events) GetServicePlanData(cli plugin.CliConnection) ServicePlanSearchRe
 
 	if res.TotalPages > 1 {
 		for i := 2; i <= res.TotalPages; i++ {
-			apiUrl := fmt.Sprintf("/v2/services_plans?order-direction=asc&page=%v&results-per-page=100", strconv.Itoa(i))
+			apiUrl := fmt.Sprintf("/v2/service_plans?order-direction=asc&page=%v&results-per-page=100", strconv.Itoa(i))
 			tRes := c.UnmarshallServicePlanSearchResults(apiUrl, cli)
 			res.Resources = append(res.Resources, tRes.Resources...)
 		}
