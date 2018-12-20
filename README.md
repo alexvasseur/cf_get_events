@@ -13,9 +13,10 @@ This project is authored by a Pivotal employee and Cloud Foundry advocate under 
 
 ## Install
 
-Install as a standalone cloud foudry CF CLI plugin
-Get a release from this project page
-Install with
+Simply install as a standalone cloud foudry CF CLI plugin.
+
+Get a release from this project page https://github.com/avasseur-pivotal/cf_get_events/releases
+Install with:
 ```
 cf install-plugin -f ./bcr-plugin-osx`
 cf plugins
