@@ -56,7 +56,12 @@ func (c Events) GetOrgsSummary(cli plugin.CliConnection) map[string]OrgSummary {
 			quotaCache[val.Entity.QuotaGuid] = orgQuota
 		}
 		orgSummary.MemoryLimitOrgQuota = orgQuota.Entity.MemoryLimit
-		orgSummary.MemoryUsage = (int)(orgSummary.Memory * 100 / orgSummary.MemoryLimitOrgQuota)
+		// special case for quota <=0 - see https://github.com/avasseur-pivotal/cf_get_events/issues/7
+		if orgSummary.MemoryLimitOrgQuota > 0 {
+			orgSummary.MemoryUsage = (int)(orgSummary.Memory * 100 / orgSummary.MemoryLimitOrgQuota)
+		} else {
+			orgSummary.MemoryUsage = 0
+		}
 		data[val.Metadata.GUID] = orgSummary
 	}
 
