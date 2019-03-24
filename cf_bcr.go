@@ -39,6 +39,12 @@ type Metadata struct {
 	GUID string `json:"guid"`
 }
 
+// /v2/info response json
+type CCInfo struct {
+	Name  string `json:"name"`
+	Build string `json:"build"`
+}
+
 // Inputs represent the parsed input args
 type Inputs struct {
 	fromDate time.Time
@@ -78,7 +84,7 @@ func (c *Events) GetMetadata() plugin.PluginMetadata {
 		Name: "bcr",
 		Version: plugin.VersionType{
 			Major: 2,
-			Minor: 2,
+			Minor: 3,
 			Build: 0,
 		},
 		Commands: []plugin.Command{
@@ -112,8 +118,15 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 		Usage(0)
 	}
 
+	// cf api endpoint
 	api, _ := cli.ApiEndpoint()
 	fmt.Printf("%s\n", api)
+
+	// PAS version
+	var tRes CCInfo
+	output, _ := cli.CliCommandWithoutTerminalOutput("curl", "/v2/info")
+	json.Unmarshal([]byte(strings.Join(output, "")), &tRes)
+	fmt.Printf("%s (%s)\n", tRes.Build, tRes.Name)
 
 	if ins.monthly {
 		month := c.GetMonthlyUsage(cli)
@@ -225,9 +238,15 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 							siRedis += c
 							total.siRedis += c
 						default:
-							siOther += c
-							total.siOther += c
-							flat = append(flat, n+":"+strconv.Itoa(c))
+							// special case for RabbitMQ tile replicator and naming convention
+							if strings.HasPrefix(n, "p-rabbitmq-") {
+								siRabbitMQ += c
+								total.siRabbitMQ += c
+							} else {
+								siOther += c
+								total.siOther += c
+								flat = append(flat, n+":"+strconv.Itoa(c))
+							}
 						}
 						//flat = append(flat, n+":"+strconv.Itoa(c))
 					}
