@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cloudfoundry/cli/plugin"
+	"code.cloudfoundry.org/cli/plugin"
 )
 
 // AppSearchResults represents top level attributes of JSON response from Cloud Foundry API
@@ -34,6 +34,12 @@ type AppSearchEntity struct {
 	State             string `json:"state"` // STARTED, STOPPED, ??TODO
 	Memory            int    `json:"memory"`
 	DiskQuota         int    `json:"disk_quota"`
+}
+
+// util to remove i in the array
+func (c Events) remove(slice []AppSearchResources, i int) []AppSearchResources {
+	copy(slice[i:], slice[i+1:])
+	return slice[:len(slice)-1]
 }
 
 //// GetAppData requests all of the Application data from Cloud Foundry

@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"time"
+	//	"time"
 
-	"github.com/cloudfoundry/cli/plugin"
+	"code.cloudfoundry.org/cli/plugin"
 )
 
 // OutputResults represents the filtered event results for the input args
@@ -106,6 +106,7 @@ func (c Events) UnmarshallEventSearchResults(apiUrl string, cli plugin.CliConnec
 	return tRes
 }
 
+/*
 // filter the results for given input criteria.
 func (c Events) FilterResults(cli plugin.CliConnection, ins Inputs, orgs map[string]OrgSearchEntity, spaces map[string]SpaceSearchEntity, apps AppSearchResults, events EventSearchResults) OutputResults {
 	var results OutputResults
@@ -149,3 +150,4 @@ func (c Events) FilterResults(cli plugin.CliConnection, ins Inputs, orgs map[str
 	}
 	return results
 }
+*/

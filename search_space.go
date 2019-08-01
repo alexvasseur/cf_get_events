@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cloudfoundry/cli/plugin"
+	"code.cloudfoundry.org/cli/plugin"
 )
 
 // SpaceSearchResults represents top level attributes of JSON response from Cloud Foundry API
@@ -40,7 +40,7 @@ func (c Events) GetSpaces(cli plugin.CliConnection) map[string]SpaceSearchEntity
 	return data
 }
 
-// GetSpaceData requests all of the Application data from Cloud Foundry
+// GetSpaceData requests all of the Spaces data from Cloud Foundry
 func (c Events) GetSpaceData(cli plugin.CliConnection) SpaceSearchResults {
 	var res SpaceSearchResults
 	res = c.UnmarshallSpaceSearchResults("/v2/spaces?order-direction=asc&results-per-page=100", cli)

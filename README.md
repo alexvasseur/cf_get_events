@@ -9,6 +9,11 @@ as it aims at helping organizations and platform team & leads doing accounting o
 
 This project is authored by a Pivotal employee and Cloud Foundry advocate under open source license terms.
 
+# PCF versions
+
+Plugin version 2.5 has introduced new option to include/exclude spaces using PCF metadata labels, which relies on CF API v3 and is available with PCF 2.5 and later.
+For usage with PCF 2.4 or older please download and use plugin version 2.3
+
 # USAGE
 
 ## Install
@@ -17,11 +22,15 @@ Simply install as a standalone cloud foudry CF CLI plugin.
 
 Get a release from this project page https://github.com/avasseur-pivotal/cf_get_events/releases
 Install with:
+```bash
+cf install-plugin -f ./bcr-plugin-osx
 ```
-cf install-plugin -f ./bcr-plugin-osx`
+and verify installation with
+```
 cf plugins
 plugin             version   command name                 command help
-bcr                2.1.0     bcr                          Get Apps and Services consumption details
+bcr                2.4.0     bcr                          Get Apps and Services consumption details
+bcr                2.4.0     label-space                  Manage space level labels metadata
 ```
 
 (You don't need golang to run it.)
@@ -35,7 +44,35 @@ The other options provides the *then current* usage and may be used for further 
 
 Given the broad access, you must be login as CF admin or equivalent UAA role (cloud_controller.admin and uaa.admin for example)
 
-## Example
+```
+Usage:  cf bcr [options]
+    --monthly
+	--ai
+	--si
+```
+
+### Using metadata labels for AI and SI reporting
+
+To filter based on metadata labels from space level use the optional `--label-space <label_selector>` option
+
+```
+Usage:  cf bcr [options]
+	--ai --label-space <label_selector>
+	--si --label-space <label_selector>
+```
+
+The plugin also provide the `label-space` command to read/write/search space level metadata label.
+Please refer to [PCF metadata documentation](https://docs.pivotal.io/pivotalcf/2-6/adminguide/metadata.html) and [CF API label_selector](https://v3-apidocs.cloudfoundry.org/version/3.74.0/index.html#labels-and-selectors) format conventions for more details.
+
+```
+Usage:  cf label-space [options]
+	(no argument)			shows labels for current space
+	--write com.test/key=value	write label for current space
+	--delete com.test/key		delete label for current space
+	--search <label_selector>	search across all orgs & spaces
+```
+
+## Example: BCR
 
 ```
 cf bcr --monthly --ai --si
@@ -119,7 +156,94 @@ https://api.system.domain
 +-------------------------+--------------+--------+----------------+
 ```
 
+## Example: BCR with metadata labels for spaces
 
+```
+cf bcr --ai --si --label-space com.test/alex
+
+https://api.system.domain
+2.5.5-build.15 (Small Footprint PAS)
+Filtering spaces with label selector: com.test/alex
+
++------+-------+----+---------------+------------------+---------------+----------------+
+| ORG  | SPACE | SI | PIVOTAL MYSQL | PIVOTAL RABBITMQ | PIVOTAL REDIS | OTHER SERVICES |
++------+-------+----+---------------+------------------+---------------+----------------+
+| Alex | dev   |  0 |               |                  |               |                |
++------+-------+----+---------------+------------------+---------------+----------------+
+|  -   |   -   | 0  |       0       |        0         |       0       | 0 (PIVOTAL: 0) |
++------+-------+----+---------------+------------------+---------------+----------------+
+
++---------+------+-------------------+
+| SERVICE | PLAN | SERVICE INSTANCES |
++---------+------+-------------------+
++---------+------+-------------------+
+
++------+-------+---------+----+--------+-------------+--------------+
+| ORG  | SPACE |   APP   | AI | MEMORY |    STATE    | MEMORY USAGE |
++------+-------+---------+----+--------+-------------+--------------+
+| Alex | dev   | session |  2 |   1024 | STOPPED     |              |
+| Alex | dev   | booking |  1 |   1024 | STOPPED     |              |
++------+-------+---------+----+--------+-------------+--------------+
+|  1   |   1   |    2    | 3  |  3072  | 0 (STARTED) |      0       |
++------+-------+---------+----+--------+-------------+--------------+
+
++------+--------------+--------------+---------+--------------+
+| ORG  | MEMORY LIMIT | MEMORY USAGE | USAGE % | AI (STARTED) |
++------+--------------+--------------+---------+--------------+
+| Alex |        32768 |            0 |       0 |            0 |
++------+--------------+--------------+---------+--------------+
+
++-----------------------+-----+----+--------+
+|       CATEGORY        | APP | AI | MEMORY |
++-----------------------+-----+----+--------+
+| Total                 |   2 |  3 |   3072 |
+| Total (excl system)   |   2 |  3 |   3072 |
+| STARTED               |   0 |  0 |      0 |
+| STARTED (excl system) |   0 |  0 |      0 |
++-----------------------+-----+----+--------+
+```
+
+Other label_selector examples:
+
+```
+cf bcr --ai --si --label-space com.test/alex=dev
+
+cf bcr --ai --si --label-space !com.test/alex=prod
+...
+```
+Please refer to [PCF metadata documentation](https://docs.pivotal.io/pivotalcf/2-6/adminguide/metadata.html) and [CF API label_selector](https://v3-apidocs.cloudfoundry.org/version/3.74.0/index.html#labels-and-selectors) format conventions for more details.
+
+
+## Example: read/write/search metadata labels for spaces
+
+```
+> cf target
+api endpoint:   ...
+api version:    2.131.0
+user:           ...
+org:            Alex
+space:          dev
+
+> cf label-space
+com.test/alex=1933
+
+> cf label-space --write com.test/alex=0014
+com.test/alex=0014
+
+> cf label-space --search com.test/alex=0014
++------+-------+--------------------------------------+--------------------------------------+
+| ORG  | SPACE |               ORG GUID               |              SPACE GUID              |
++------+-------+--------------------------------------+--------------------------------------+
+| Alex | dev   | a0054264-8010-4068-9305-9e6b459c972d | 488016a7-8c75-4c20-901a-3b80bc550693 |
++------+-------+--------------------------------------+--------------------------------------+
+
+> cf label-space --search !com.test/alex
++----------------------------+------------------------------+--------------------------------------+--------------------------------------+
+|            ORG             |            SPACE             |               ORG GUID               |              SPACE GUID              |
++----------------------------+------------------------------+--------------------------------------+--------------------------------------+
+| system                     | system                       | 82f806ab-542f-4505-b0cc-e2163429e54b | 1055e417-d1da-437a-b89d-556296b8dcea |
+...
+```
 
 ## Uninstall
 

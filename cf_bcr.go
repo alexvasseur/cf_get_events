@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudfoundry/cli/plugin"
+	"code.cloudfoundry.org/cli/plugin"
 	"github.com/olekukonko/tablewriter"
 	"github.com/simonleung8/flags"
 )
@@ -47,13 +47,14 @@ type CCInfo struct {
 
 // Inputs represent the parsed input args
 type Inputs struct {
-	fromDate time.Time
-	toDate   time.Time
-	isCsv    bool
-	isJson   bool
-	AI       bool
-	SI       bool
-	monthly  bool
+	fromDate   time.Time
+	toDate     time.Time
+	isCsv      bool
+	isJson     bool
+	AI         bool
+	SI         bool
+	monthly    bool
+	labelSpace string // "" if not used
 }
 
 type Total struct {
@@ -84,7 +85,7 @@ func (c *Events) GetMetadata() plugin.PluginMetadata {
 		Name: "bcr",
 		Version: plugin.VersionType{
 			Major: 2,
-			Minor: 3,
+			Minor: 5,
 			Build: 0,
 		},
 		Commands: []plugin.Command{
@@ -93,6 +94,13 @@ func (c *Events) GetMetadata() plugin.PluginMetadata {
 				HelpText: "Get Apps and Services consumption details",
 				UsageDetails: plugin.Usage{
 					Usage: UsageText(),
+				},
+			},
+			{
+				Name:     "label-space",
+				HelpText: "Manage space level labels metadata",
+				UsageDetails: plugin.Usage{
+					Usage: UsageTextLabelSpace(),
 				},
 			},
 		},
@@ -111,22 +119,54 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	case "bcr":
 		if len(args) >= 2 {
 			ins = c.buildClientOptions(args)
+			// continue below
 		} else {
 			Usage(1)
 		}
+	case "label-space":
+		if len(args) == 1 {
+			c.GetLabelSpace(cli)
+			os.Exit(0)
+		} else if len(args) == 3 {
+			command := args[1]
+			arg := args[2]
+			switch command {
+			case "--write":
+				c.WriteLabelSpace(arg, cli)
+				c.GetLabelSpace(cli)
+			case "--delete":
+				c.DeleteLabelSpace(arg, cli)
+				c.GetLabelSpace(cli)
+			case "--search":
+				c.SearchLabelSpace(arg, cli)
+			default:
+				Usage(1)
+			}
+			os.Exit(0)
+		}
+		Usage(1)
 	default:
 		Usage(0)
 	}
+
+	// main BCR routine starts here
 
 	// cf api endpoint
 	api, _ := cli.ApiEndpoint()
 	fmt.Printf("%s\n", api)
 
-	// PAS version
+	// always reports PAS version
 	var tRes CCInfo
 	output, _ := cli.CliCommandWithoutTerminalOutput("curl", "/v2/info")
 	json.Unmarshal([]byte(strings.Join(output, "")), &tRes)
 	fmt.Printf("%s (%s)\n", tRes.Build, tRes.Name)
+
+	// reports label if used
+	if ins.labelSpace != "" {
+		fmt.Printf("Filtering spaces with label selector: %s\n", ins.labelSpace)
+	}
+
+	fmt.Printf("\n")
 
 	if ins.monthly {
 		month := c.GetMonthlyUsage(cli)
@@ -141,8 +181,27 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 		table.Render()
 	}
 
+	// reports space label_selector if any
+	//TODO
+
 	orgs := c.GetOrgs(cli)
-	spaces := c.GetSpaces(cli)
+	spaces := c.GetSearchSpacesv3(ins.labelSpace, cli) // optional label_selector search
+
+	// clean orgs from label_selector spaces
+	// TODO O(nxn) optimize for large scale
+	for oguid, _ := range orgs {
+		ofound := false
+		for _, space := range spaces {
+			if space.OrgGUID() == oguid {
+				ofound = true
+				break
+			}
+		}
+		if !ofound {
+			delete(orgs, oguid)
+		}
+	}
+
 	var total Total
 	total.org = len(orgs)
 	total.space = len(spaces)
@@ -157,9 +216,26 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 		services = c.GetServices(cli)
 		plans = c.GetServicePlans(cli)
 		serviceInstances = c.GetServiceInstances(cli)
+		// filter for label_selector spaces
+		for siguid, si := range serviceInstances {
+			if _, afound := spaces[si.SpaceGuid]; afound {
+			} else {
+				delete(serviceInstances, siguid)
+			}
+		}
 	}
 	if ins.AI {
 		apps = c.GetAppData(cli)
+		// filter for label_selector spaces
+		filterapps := make([]AppSearchResources, 0)
+		for _, app := range apps.Resources {
+			if _, afound := spaces[app.Entity.SpaceGUID]; afound {
+				// app is in a space that we want to keep with label_selector
+				filterapps = append(filterapps, app)
+			}
+		}
+		apps.Resources = filterapps
+		apps.TotalResults = len(filterapps)
 	}
 
 	// services instances -- DEBUG only
@@ -168,7 +244,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 		table.SetHeader([]string{"Org", "Space", "Service Instance"})
 		//TODO loop on org, space id
 		for _, si := range serviceInstances {
-			table.Append([]string{orgs[spaces[si.SpaceGuid].OrgGUID].Name, spaces[si.SpaceGuid].Name, si.Name})
+			table.Append([]string{orgs[spaces[si.SpaceGuid].OrgGUID()].Name, spaces[si.SpaceGuid].Name, si.Name})
 		}
 		table.Render()
 
@@ -200,7 +276,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 		//TODO - BROKERAGE, other?
 		for _, oguid := range sortedOrgs {
 			for sguid, space := range spaces {
-				if space.OrgGUID == oguid {
+				if space.OrgGUID() == oguid {
 
 					siSpace := 0
 					siList := make(map[string]int)
@@ -303,7 +379,11 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 							count++
 						}
 					}
-					table.Append([]string{services[plan.ServiceGuid].Label, plan.Name, strconv.Itoa(count)})
+					//if label_selector is used, then display only if not 0
+					if ins.labelSpace != "" && count == 0 {
+					} else {
+						table.Append([]string{services[plan.ServiceGuid].Label, plan.Name, strconv.Itoa(count)})
+					}
 				}
 			}
 		}
@@ -320,7 +400,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 		// order by Orgs, then by Space, then by State
 		for _, oguid := range sortedOrgs {
 			for sguid, space := range spaces {
-				if space.OrgGUID == oguid {
+				if space.OrgGUID() == oguid {
 
 					// count non system only
 					if orgs[oguid].Name != "system" { //&& orgs[oguid] != "p-spring-cloud-services" {
@@ -351,10 +431,10 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 
 							memUsage := val.Entity.Instances * val.Entity.Memory
 
-							table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+							table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID()].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
 								strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State, strconv.Itoa(memUsage)})
 							//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
-							//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+							//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID()], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
 							//	val.Entity.Instances, val.Entity.Memory, val.Entity.State)
 						}
 					}
@@ -365,10 +445,10 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 							total.AI += val.Entity.Instances
 							total.mem += val.Entity.Instances * val.Entity.Memory
 
-							table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+							table.Append([]string{orgs[spaces[val.Entity.SpaceGUID].OrgGUID()].Name, spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
 								strconv.Itoa(val.Entity.Instances), strconv.Itoa(val.Entity.Memory), val.Entity.State, ""})
 							//fmt.Printf("%s,%s,%s,%d,%d,%s\n",
-							//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
+							//	orgs[spaces[val.Entity.SpaceGUID].OrgGUID()], spaces[val.Entity.SpaceGUID].Name, val.Entity.Name,
 							//	val.Entity.Instances, val.Entity.Memory, val.Entity.State)
 						}
 					}
@@ -388,7 +468,7 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 			val := orgsSummary[oguid]
 			aicount := 0
 			for spaceGuid, space := range spaces {
-				if space.OrgGUID == oguid {
+				if space.OrgGUID() == oguid {
 					for _, app := range apps.Resources {
 						if app.Entity.SpaceGUID == spaceGuid && app.Entity.State == "STARTED" {
 							aicount += app.Entity.Instances
@@ -413,8 +493,8 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 	}
 
 	if false {
-		events := c.GetEventsData(cli, ins)
-		c.FilterResults(cli, ins, orgs, spaces, apps, events)
+		//events := c.GetEventsData(cli, ins)
+		//c.FilterResults(cli, ins, orgs, spaces, apps, events)
 		//results := c.FilterResults(cli, ins, orgs, spaces, apps, events)
 		/*
 			if ins.isCsv {
@@ -428,28 +508,25 @@ func (c Events) Run(cli plugin.CliConnection, args []string) {
 
 func Usage(code int) {
 	fmt.Println("\nUsage: ", UsageText())
+	fmt.Println("\nUsage: ", UsageTextLabelSpace())
 	os.Exit(code)
 }
 
 func UsageText() string {
-	/*	usage := "cf get-events [options]" +
-		"\n    where options include: " +
-		"\n       --today                  : get all events for today (till now)" +
-		"\n       --yesterday              : get events for yesterday only" +
-		"\n       --yesterday-on           : get events from yesterday onwards (till now)" +
-		"\n       --all                    : get all events (defaults to last 90 days)" +
-		"\n       --json                   : list output in json format (default is csv)\n" +
-		"\n       --from <yyyymmdd>        : get events from given date onwards (till now)" +
-		"\n       --from <yyyymmddhhmmss>  : get events from given date and time onwards (till now)" +
-		"\n       --to <yyyymmdd>          : get events till given date" +
-		"\n       --to <yyyymmddhhmmss>    : get events till given date and time\n" +
-		"\n       --from <yyyymmdd> --to <yyyymmdd>" +
-		"\n       --from <yyyymmddhhmmss> --to <yyyymmddhhmmss>"
-	*/
 	usage := "cf bcr [options]" +
+		"\n	--monthly" +
 		"\n	--ai" +
 		"\n	--si" +
-		"\n	--monthly"
+		"\n	--label-space <label_selector> (optional)"
+	return usage
+}
+
+func UsageTextLabelSpace() string {
+	usage := "cf label-space [options]" +
+		"\n	(no argument)			shows labels for current space" +
+		"\n	--write com.test/key=value	write label for current space" +
+		"\n	--delete com.test/key		delete label for current space" +
+		"\n	--search <label_selector>	search across all orgs & spaces"
 	return usage
 }
 
@@ -490,6 +567,7 @@ func (c *Events) buildClientOptions(args []string) Inputs {
 	fc.NewBoolFlag("ai", "ai", "Application instances")
 	fc.NewBoolFlag("si", "si", "Service instances")
 	fc.NewBoolFlag("monthly", "monthly", "Monthly usage report, last 7 months")
+	fc.NewStringFlagWithDefault("label-space", "label-space", "(optional) label selector for spaces", "")
 
 	err := fc.Parse(args[1:]...)
 
@@ -514,6 +592,10 @@ func (c *Events) buildClientOptions(args []string) Inputs {
 	if fc.IsSet("monthly") {
 		ins.monthly = true
 	}
+	if fc.IsSet("label-space") {
+		ins.labelSpace = fc.String("label-space")
+	}
+
 	/*
 		if fc.IsSet("all") {
 			nintyDays := time.Hour * -(24 * 90)
